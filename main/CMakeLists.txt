@@ -27,4 +27,4 @@ idf_component_register(
         esp_http_server
 )
 
-spiffs_create_partition_image(storage "${CMAKE_CURRENT_LIST_DIR}/../FOTOS" FLASH_IN_PROJECT)
+#spiffs_create_partition_image(storage "${CMAKE_CURRENT_LIST_DIR}/../FOTOS" FLASH_IN_PROJECT)

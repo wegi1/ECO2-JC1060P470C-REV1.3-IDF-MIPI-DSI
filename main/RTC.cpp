@@ -342,7 +342,12 @@ void vTaskTouch(void *pvParameters)
             old_seconds = 111;
             PHOTO_NR = PHOTO_NR ^ 1;
             g_trigger_auto_photo = false;
+            while (touch.getTouch(&tx, &ty))
+                vTaskDelay(pdMS_TO_TICKS(20));
+            vTaskDelay(pdMS_TO_TICKS(150));
+            touch.getTouch(&tx, &ty);
             is_editing_time = false;
+
             for (int t = 0; t <= BRIGHTNESS; t++)
             {
                 ledc_set_duty(BACKLIGHT_LEDC_MODE, BACKLIGHT_LEDC_CHANNEL, (t * 1023) / 100);
