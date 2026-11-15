@@ -6,8 +6,8 @@ This folder contains the resource files that will be packaged and flashed onto t
 
 ### 1. Slideshow Images (`FOTO1.jpg`, `FOTO2.jpg`)
 The folder includes two sample JPEG images that are automatically added to the SPIFFS partition. You can replace them with your own photos, provided you follow these requirements:
-* **Resolution and Orientation:** Images must have a resolution of **800x1280** pixels and be rotated vertically (**Portrait** orientation).
-* **Size Limit:** The total size of the images must not exceed **2 MB**. If you want to use larger files, you must allocate more space for the SPIFFS partition in the `partitions.csv` file.
+- **Resolution and Orientation:** Images must have a resolution of **1024x600** pixels and be oriented horizontally (**Landscape** orientation).
+* **Size Limit:** The total size of the images must not exceed **1 MB**. If you want to use larger files, you must allocate more space for the SPIFFS partition in the `partitions.csv` file.
 
 ### 2. Wi-Fi Network Configuration (`prefs.ini`)
 The `prefs.ini` file stores your Wi-Fi credentials, which the application uses to connect to the **NTP** time server and the **weather service**. You can configure them in two ways:
@@ -47,8 +47,8 @@ Ten folder zawiera pliki zasobów, które zostaną spakowane i wgrane na partycj
 
 ### 1. Zdjęcia pokazu slajdów (`FOTO1.jpg`, `FOTO2.jpg`)
 W folderze znajdują się 2 przykładowe zdjęcia JPG, które zostaną dodane do partycji SPIFFS. Możesz wymienić je na własne, ale musisz pamiętać o następujących zasadach:
-* **Rozdzielczość i orientacja:** Zdjęcia muszą mieć dokładną rozdzielczość **800x1280** pikseli i być obrócone w pionie (**Portrait**).
-* **Limit rozmiaru:** Łączny rozmiar zdjęć nie może przekroczyć **2 MB**. W przeciwnym wypadku musisz przydzielić więcej miejsca dla partycji SPIFFS w pliku `partitions.csv`.
+* **Rozdzielczość i orientacja:** Zdjęcia muszą mieć dokładną rozdzielczość **1024x600** pikseli i być obrócone w poziomie (**Landscape**).
+* **Limit rozmiaru:** Łączny rozmiar zdjęć nie może przekroczyć **1 MB**. W przeciwnym wypadku musisz przydzielić więcej miejsca dla partycji SPIFFS w pliku `partitions.csv`.
 
 ### 2. Konfiguracja sieci Wi-Fi (`prefs.ini`)
 Plik `prefs.ini` przechowuje dane sieci bezprzewodowej, które aplikacja wykorzystuje do łączenia się z serwerem czasu **NTP** oraz **stacją pogodową**. Możesz je uzupełnić lub zmienić na dwa sposoby:
