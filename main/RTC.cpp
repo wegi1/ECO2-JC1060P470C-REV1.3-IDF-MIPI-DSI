@@ -5,6 +5,7 @@
 #include <time.h>
 #include <esp_timer.h>
 #include <sys/stat.h>
+#include <math.h>
 
 // Naglowki FreeRTOS oraz ESP-IDF
 #include "freertos/FreeRTOS.h"
@@ -46,7 +47,7 @@ extern jd9165_lcd lcd;
 extern gt911_touch touch;
 
 extern uint16_t *fbs[1]; // Bufory ramki (framebuffer) dla wyświetlacza
-
+uint16_t *back_buffer = NULL;
 extern SemaphoreHandle_t vsync_sem;
 // Wskaźnik (uchwyt) do zadania gaszenia dwukropka
 TaskHandle_t hTaskDisableColon = NULL;
@@ -66,6 +67,10 @@ static char txt_min[4];
 static char txt_sek[4];
 
 volatile bool ntp_read = false;
+volatile bool temp_read = false;
+
+volatile float g_outdoor_temp = -999.0f;
+
 volatile bool is_editing_time = false;
 
 volatile uint8_t BRIGHTNESS = 50; // Zakres 0 - 100
@@ -112,11 +117,7 @@ void vTaskDisableColon(void *pvParameters)
         // 3. Od razu na nim GASIMY kwadraciki dwukropka
         draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 490, 80, 40, 40, 0);
         draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 490, 235, 40, 40, 0);
-        esp_cache_msync((void *)back_buffer, BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-        xSemaphoreTake(vsync_sem, portMAX_DELAY);
-
-        // 7. Wysłanie klatki bez dwukropka na ekran przez DMA
-        lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)back_buffer);
+        flush_screen_vsync();
         xSemaphoreGive(fb_mutex);
         // rtc_end = esp_timer_get_time();
         // printf("[PROFILER] RENDER COLON (vTaskDisableColon) zajął: %llu us\n", (rtc_end - rtc_start));
@@ -335,9 +336,7 @@ void vTaskTouch(void *pvParameters)
             }
             xSemaphoreTake(fb_mutex, portMAX_DELAY);
             safe_clear_screen((uint16_t *)fbs[0], 0x0000);
-            esp_cache_msync((void *)fbs[0], BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            xSemaphoreTake(vsync_sem, portMAX_DELAY);
-            lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+            flush_screen_vsync();
             xSemaphoreGive(fb_mutex);
             old_seconds = 111;
             PHOTO_NR = PHOTO_NR ^ 1;
@@ -359,6 +358,42 @@ void vTaskTouch(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
+//=====================================================================================================
+//=====================================================================================================
+//=====================================================================================================
+void vTaskWeather(void *pvParameters)
+{
+    printf("[WEATHER] Zadanie pogodowe wystartowalo na rdzeniu %d.\n", xPortGetCoreID());
+
+    // Czekamy 18 sekund po starcie, aby pierwsze NTP po resecie zdazylo skonczyc
+    vTaskDelay(pdMS_TO_TICKS(18000));
+
+    while (1)
+    {
+        if (!is_wifi_portal_active() && !is_ntp_sync_running())
+        {
+            float temp_val = -999.0f;
+            if (fetch_weather_temperature(&temp_val))
+            {
+                g_outdoor_temp = temp_val;
+                old_seconds = 111; // Wymuszenie odswiezenia ekranu
+                printf("[WEATHER] Zaktualizowano temperature: %.1f C\n", g_outdoor_temp);
+            }
+            else
+            {
+                printf("[WEATHER] Nie udalo sie pobrac temperatury (zachowuje poprzednia).\n");
+            }
+        }
+        else
+        {
+            printf("[WEATHER] Radio zajete przez NTP lub SoftAP - pomijam cykl.\n");
+        }
+
+        // Odswiezanie co 10 minut
+        vTaskDelay(pdMS_TO_TICKS(10 * 60 * 1000));
+    }
+}
+
 //=====================================================================================================
 //=====================================================================================================
 //=====================================================================================================
@@ -434,9 +469,7 @@ void init_RTC_subsystem(void)
         }
     }
     safe_clear_screen(fbs[0], 0x0000);
-    esp_cache_msync((void *)fbs[0], BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    xSemaphoreTake(vsync_sem, portMAX_DELAY);
-    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+    flush_screen_vsync();
     vTaskDelay(pdMS_TO_TICKS(500));
     BRIGHTNESS = load_brightness_from_NVS(); // Wczytanie starej jasności
 
@@ -452,6 +485,8 @@ void init_RTC_subsystem(void)
     xTaskCreate(vTaskMenuEngine, "vTaskMenuEngine", 4096, NULL, 4, &hTaskMenuEngine);
 
     printf("[LOG] Podsystem RTC: Zadania mrugania i dotyku zostały pomyślnie zarejestrowane.\n");
+
+    xTaskCreatePinnedToCore(vTaskWeather, "TaskWeather", 6144, NULL, 2, NULL, 1);
 
     // Uruchomienie cyklicznego automatu synchronizacji NTP (raz na dobę / co 4 godziny)
     // Przypinamy go do rdzenia 1 (ekran działa na rdzeniu 0), dajemy 4096 B stosu i priorytet 2
@@ -487,6 +522,7 @@ void tst_lcd(void)
     uint16_t *main_buffer = (uint16_t *)fbs[0];
     // 4. Jedno, czyste i pewne czyszczenie Cache dla tego bufora
     esp_cache_msync((void *)main_buffer, BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    xSemaphoreTake(vsync_sem, 0);
     xSemaphoreTake(vsync_sem, portMAX_DELAY);
     lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)main_buffer);
 }
@@ -522,9 +558,6 @@ void print_RTC(void)
     xSemaphoreTake(fb_mutex, portMAX_DELAY);
     esp_cache_msync((void *)fbs[0], BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
 
-    char txt_slider_pct[16];
-    snprintf(txt_slider_pct, sizeof(txt_slider_pct), "%d%%", BRIGHTNESS);
-
     snprintf(tekst, sizeof(tekst), "%04d-%02d-%02d", (dane_czasu.tm_year + 1900), (dane_czasu.tm_mon + 1), dane_czasu.tm_mday);
     snprintf(txt_godz, sizeof(txt_godz), "%02d", dane_czasu.tm_hour);
     snprintf(txt_min, sizeof(txt_min), "%02d", dane_czasu.tm_min);
@@ -541,7 +574,6 @@ void print_RTC(void)
     // M-C zakres x 260-512 y 485-600
     // DAY zakres x 520-745 y 485-600
 
-    int width_bar = 250 * BRIGHTNESS / 100;
     // 2. Rysowanie bazy zegara (czcionki wektorowe bezpośrednio na nim)
     // godziny zakres x 0 - 460, y 0 - 370
     draw_clock_perfect_monospace(main_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, txt_godz, 2, 2, 295, 0xFFFF);
@@ -560,9 +592,44 @@ void print_RTC(void)
     // DATA
     draw_clock_perfect_monospace(main_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, tekst, 8, 495, 80.0f, 0xFFFF);
     // BRIGHTNESS zakres x 750-1023 y 490-600
-    draw_hollow_rectangle(main_buffer, LCD_H_RES, LCD_V_RES, 750, 490, (1024 - 750 - 4), (600 - 490 - 4), 4, 0x07E0);
-    draw_rectangle(main_buffer, LCD_H_RES, LCD_V_RES, 760, 498, width_bar, 88, 0xF100); // 100% = 250 widh
-    draw_text(main_buffer, LCD_H_RES, LCD_V_RES, txt_slider_pct, 840, 506, 64.0f, 0xFFFF);
+    //**************************************************************************** */
+    // OUTDOOR TEMP (w miejscu dawnego paska jasnosci: x 750-1023, y 490-600)
+    char txt_temp[16];
+    uint16_t frame_color = 0x07E0; // Domyslnie zielona ramka
+    uint16_t text_color = 0xFFFF;  // Domyslnie biale cyfry
+
+    if (g_outdoor_temp < -100.0f)
+    {
+        snprintf(txt_temp, sizeof(txt_temp), "--");
+    }
+    else
+    {
+        int temp_int = (int)roundf(g_outdoor_temp);
+        snprintf(txt_temp, sizeof(txt_temp), "%d", temp_int);
+
+        if (temp_int <= 0)
+        {
+            frame_color = 0x07FF; // Lodowy niebieski (skrobanie szyb!)
+            text_color = 0x07FF;
+        }
+    }
+
+    // Jeśli ostatni odczyt się nie powiódł, ramka świeci na czerwono!
+    if (!temp_read)
+    {
+        frame_color = 0xF100;
+    }
+
+    int len = strlen(txt_temp);
+    int num_w = len * 50;
+    int text_x = 885 - ((num_w + 80) / 2);
+    draw_hollow_rectangle(main_buffer, LCD_H_RES, LCD_V_RES, 750, 490, (1024 - 750 - 4), (600 - 490 - 4), 4, frame_color);
+    draw_text(main_buffer, LCD_H_RES, LCD_V_RES, txt_temp, text_x, 492, 100.0f, text_color);
+    draw_text(main_buffer, LCD_H_RES, LCD_V_RES, ".", text_x + num_w + 10, 485, 60.0f, text_color);
+    draw_text(main_buffer, LCD_H_RES, LCD_V_RES, "C", text_x + num_w + 28, 492, 100.0f, text_color);
+
+    /****************************************************************************** */
+
     if (ntp_read == true)
     {
         draw_rectangle(main_buffer, LCD_H_RES, LCD_V_RES, 950, 420, 40, 40, 0x07E0);
@@ -572,14 +639,7 @@ void print_RTC(void)
         draw_rectangle(main_buffer, LCD_H_RES, LCD_V_RES, 950, 420, 40, 40, 0xF100);
     }
 
-    // 4. Jedno, czyste i pewne czyszczenie Cache dla tego bufora
-    esp_cache_msync((void *)main_buffer, BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-
-    // 5. Czekamy na VSYNC i wypychamy DMA na ekran MIPI-DSI
-
-    xSemaphoreTake(vsync_sem, portMAX_DELAY);
-
-    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)main_buffer);
+    flush_screen_vsync();
     xSemaphoreGive(fb_mutex);
     // 6. Wybudzamy task gaszenia dwukropka (który po 500 ms tylko go zamaluje na czarno)
     if (hTaskDisableColon != NULL)
@@ -704,12 +764,7 @@ void vTaskMenuEngine(void *pvParameters)
 
         // --- TWARDE CZYSZCZENIE SPRZĘTOWEGO POTOKU PRZED MENU ---
         safe_clear_screen((uint16_t *)fbs[0], 0x0000);
-        esp_cache_msync((void *)fbs[0], BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-
-        // Czekamy na sprzętowy VSYNC, aby upewnić się, że DMA jest wolne
-        xSemaphoreTake(vsync_sem, portMAX_DELAY);
-        // Wypychamy fizycznie czysty czarny ekran do kontrolera LCD
-        lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+        flush_screen_vsync();
         xSemaphoreGive(fb_mutex);
 
         vTaskDelay(pdMS_TO_TICKS(40)); // Dajemy czas na pełne przełączenie ekranu
@@ -753,11 +808,7 @@ void vTaskMenuEngine(void *pvParameters)
 
         // 2. Czyścimy bufor tła na idealną czerń i synchronizujemy Cache
         safe_clear_screen((uint16_t *)fbs[0], 0x0000);
-        esp_cache_msync((void *)fbs[0], BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-
-        // 3. Twardo czekamy na VSYNC i fizycznie zerujemy klatkę na wyświetlaczu
-        xSemaphoreTake(vsync_sem, portMAX_DELAY);
-        lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+        flush_screen_vsync();
 
         // 4. Dajemy czas na fizyczne przemiecenie kontrolera i zdejmujemy blokadę czasu
         vTaskDelay(pdMS_TO_TICKS(30));
@@ -1020,9 +1071,7 @@ void set_light_menu(void)
     // Rysowanie zewnętrznej ramki suwaka (szerokość 1000, wysokość 120, na Y = 350)
     draw_hollow_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 2, 191, 1018, 136, 4, 0xFFFF);
 
-    esp_cache_msync((void *)menu_buffer, BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    xSemaphoreTake(vsync_sem, portMAX_DELAY);
-    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)menu_buffer);
+    flush_screen_vsync();
     vTaskDelay(pdMS_TO_TICKS(10)); // Dajemy czas na fizyczne przemieszczenie kontrolera i zdejmujemy blokadę czasu
 
     while (1)
@@ -1061,11 +1110,7 @@ void set_light_menu(void)
             draw_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 7, 7, 300, 35, 0x0000);
             show_debug_touch(touchX, touchY);
 
-            // 6. To ZOSTAJE: Synchronizacja Cache i wypchnięcie klatki przez DMA na MIPI-DSI
-            esp_cache_msync((void *)menu_buffer, BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            xSemaphoreTake(vsync_sem, portMAX_DELAY);
-            lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)menu_buffer);
-
+            flush_screen_vsync();
             content_changed = false;
             xSemaphoreGive(fb_mutex);
         }
@@ -1368,9 +1413,7 @@ int edit_number_menu(const char *title, int title_x, int start_val, int min_val,
             snprintf(txt_val, sizeof(txt_val), is_year ? "%04d" : "%02d", val);
             draw_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 244, 150, 540, 260, 0x0000);
             draw_clock_perfect_monospace(menu_buffer, LCD_H_RES, LCD_V_RES, digital_7_ttf, txt_val, is_year ? 280 : 375, 185, is_year ? 140.0f : 175.0f, 0xFFFF);
-            esp_cache_msync((void *)menu_buffer, BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            xSemaphoreTake(vsync_sem, portMAX_DELAY);
-            lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+            flush_screen_vsync();
             content_changed = false;
         }
 
@@ -1426,9 +1469,7 @@ int edit_number_menu(const char *title, int title_x, int start_val, int min_val,
                 // Wypychamy na LCD wyłącznie gdy stan cyfr nie wymusił odświeżenia klatki
                 if (!content_changed)
                 {
-                    esp_cache_msync((void *)menu_buffer, BUFFER_SIZE, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-                    xSemaphoreTake(vsync_sem, portMAX_DELAY);
-                    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+                    flush_screen_vsync();
                 }
             }
         }
@@ -1524,11 +1565,7 @@ void wyswietl_jpeg_ze_spiffs(const char *sciezka_pliku)
 
     jpeg_dec_close(jpeg_dec);
 
-    // 4. Synchronizacja Cache dla 2 MB obrazu i wyslanie na ekran przez DMA
-    esp_cache_msync((void *)fbs[0], screen_bytes, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    xSemaphoreTake(vsync_sem, portMAX_DELAY);
-    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
-
+    flush_screen_vsync();
     printf("[JPEG_SUCCESS] Obraz %dx%d zdekompresowany i wyslany na LCD!\n", out_info.width, out_info.height);
     xSemaphoreGive(fb_mutex);
 }
@@ -1681,6 +1718,10 @@ void set_ntp_menu(void)
     xSemaphoreTake(fb_mutex, portMAX_DELAY);
     memset(fbs[0], 0x00, 1024 * 600 * 2); // Czyszczenie na czarno (RGB565)
 
+    // 0. PRZYCISK "GET TEMP" (NA SAMEJ GÓRZE: X=312, Y=85, W=400, H=100)
+    draw_hollow_rectangle(fbs[0], LCD_H_RES, LCD_V_RES, 312, 85, 400, 100, 4, 0x07FF);
+    draw_text(fbs[0], LCD_H_RES, LCD_V_RES, "GET TEMP", 358, 92, 80, 0x07FF);
+
     // =================================================================================
     // 1. PRZYCISK "START NTP" (WYŻEJ NA OSI Y)
     // =================================================================================
@@ -1691,11 +1732,9 @@ void set_ntp_menu(void)
     // 4. To ZOSTAJE: Przycisk DONE (Ramka i napis) - użytkownik musi jakoś wyjść z menu
     draw_hollow_rectangle(fbs[0], LCD_H_RES, LCD_V_RES, 312, 450, 400, 90, 4, 0xFFFF);
     draw_text(fbs[0], LCD_H_RES, LCD_V_RES, "DONE", 400, 430, 120.0f, 0xFFFF);
-
+    flush_screen_vsync();
     xSemaphoreGive(fb_mutex);
-    esp_cache_msync(fbs[0], 1024 * 600 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    xSemaphoreTake(vsync_sem, portMAX_DELAY);
-    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+
     // vTaskResume(hTaskTouch); // Budzimy dotyk dedykowany dla tego menu
 
     // 👇 WYBUDZENIE PRZED PĘTLĄ WHILE 👇
@@ -1730,10 +1769,7 @@ void set_ntp_menu(void)
                     draw_text(back_buffer, LCD_H_RES, LCD_V_RES, "SYNCHRONIZACJA...", 288, 350, 56.0f, 0xFFE0); // Yellow
 
                     // Wypychamy status na ekran przed uruchomieniem workera
-                    esp_cache_msync(fbs[0], 1024 * 600 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-                    xSemaphoreTake(vsync_sem, portMAX_DELAY);
-                    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
-
+                    flush_screen_vsync();
                     start_ntp_sync_task_async(); // Start wątku sieciowego
 
                     // Czekamy na zakończenie pobierania czasu
@@ -1774,6 +1810,47 @@ void set_ntp_menu(void)
                 }
             }
 
+            // 0. HIT-BOX dla przycisku GET TEMP (X=312..712, Y=85..185)
+            if (tx >= 312 && tx <= 712 && ty >= 85 && ty <= 185)
+            {
+                // !!! Obsługa kliknięcia przycisku GET TEMP, wywołanie funkcji pobierania temperatury oraz aktualizacja bufora ramki i ekranu LCD.
+                if (!is_weather_fetch_running())
+                {
+                    if (!is_ntp_sync_running())
+                    {
+                        printf("[MENU NTP] -> Ręczne wywołanie synchronizacji czasu...\n");
+
+                        // Czyścimy przestrzeń pomiędzy przyciskami (Y=450 do 580) na czarno pod status
+                        draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 0, 330, 1024, 112, 0x0000);
+                        draw_text(back_buffer, LCD_H_RES, LCD_V_RES, "POBIERANIE TEMP...", 288, 350, 56.0f, 0xFFE0); // Yellow
+
+                        // Wypychamy status na ekran przed uruchomieniem workera
+                        flush_screen_vsync();
+                        float nowa_temp = -999.0f;
+                        bool ok = fetch_weather_temperature(&nowa_temp);
+
+                        if (ok && temp_read)
+                        {
+                            g_outdoor_temp = nowa_temp;
+                            char buf[64];
+                            snprintf(buf, sizeof(buf), "SUKCES GET TEMP ! %.1f", g_outdoor_temp);
+                            draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 0, 330, 1024, 112, 0x0000);
+                            draw_text(back_buffer, LCD_H_RES, LCD_V_RES, &buf[0], 110, 350, 66.0f, 0x07E0);
+
+                            int end_x = 110 + (strlen(buf) * 31) + 6;
+                            draw_text(back_buffer, LCD_H_RES, LCD_V_RES, ".", end_x + 4, 345, 40.0f, 0x07E0);
+                            draw_text(back_buffer, LCD_H_RES, LCD_V_RES, "C", end_x + 17, 350, 66.0f, 0x07E0);
+                        }
+                        else
+                        {
+                            draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 0, 330, 1024, 112, 0x0000);
+                            draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 100, 330, 800, 112, 0xF100);
+                            draw_text(back_buffer, LCD_H_RES, LCD_V_RES, "NIEPOWODZENIE GET TEMP !", 240, 350, 56.0f, 0xFFFF);
+                        }
+                    }
+                }
+            }
+
             // 2. HIT-BOX dla przycisku DONE (Ramka Y=600, wysokość 120 -> ty od ok. 600 do 750)
             if (tx >= 312 && tx <= 712 && ty >= 450 && ty <= 540)
             {
@@ -1784,9 +1861,7 @@ void set_ntp_menu(void)
             }
 
             // Synchronizacja klatki po dotknięciu (odświeża suwak i współrzędne debugowania)
-            esp_cache_msync(fbs[0], 1024 * 600 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            xSemaphoreTake(vsync_sem, portMAX_DELAY);
-            lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+            flush_screen_vsync();
         }
         vTaskDelay(pdMS_TO_TICKS(15)); // Częstotliwość odświeżania pętli
     }
@@ -1808,9 +1883,11 @@ void refresh_menu_self(void)
     uint16_t *menu_buffer = (uint16_t *)fbs[0];
     xSemaphoreTake(fb_mutex, portMAX_DELAY);
     memset(fbs[0], 0x00, 1024 * 600 * 2);
-    draw_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 512, 0, 4, 600, 0xFFFF);
-    draw_hollow_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 0, 0, 1020, 596, 4, 0xFFFF);
-    draw_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 0, 298, 1020, 4, 0xFFFF);
+    // draw_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 512, 0, 4, 600, 0xFFFF);
+    // draw_hollow_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 0, 0, 1020, 596, 4, 0xFFFF);
+    // draw_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 0, 298, 1020, 4, 0xFFFF);
+    draw_hollow_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 312, 250, 400, 100, 4, 0xFFE0);
+    draw_text(back_buffer, LCD_H_RES, LCD_V_RES, "PAINT", 405, 258, 80.0f, 0xFFE0);
     draw_hollow_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 56, 105, 400, 90, 4, 0x07E0);
     draw_text(menu_buffer, LCD_H_RES, LCD_V_RES, "NTP", 216, 112, 80.0f, 0x07E0);
     draw_hollow_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 568, 105, 400, 90, 4, 0xF100);
@@ -1819,9 +1896,7 @@ void refresh_menu_self(void)
     draw_text(menu_buffer, LCD_H_RES, LCD_V_RES, "WiFi", 190, 412, 80.0f, 0x07FF);
     draw_hollow_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 568, 405, 400, 90, 4, 0xFFFF);
     draw_text(menu_buffer, LCD_H_RES, LCD_V_RES, "DONE", 690, 412, 80.0f, 0xFFFF);
-    esp_cache_msync(fbs[0], 1024 * 600 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    xSemaphoreTake(vsync_sem, portMAX_DELAY);
-    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+    flush_screen_vsync();
     xSemaphoreGive(fb_mutex);
     wait_for_release();
 }
@@ -1849,9 +1924,7 @@ void set_ntp_and_demo_menu(void)
             draw_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 7, 7, 300, 35, 0x0000);
             show_debug_touch(tx, ty);
             xSemaphoreGive(fb_mutex);
-            esp_cache_msync(fbs[0], 1024 * 600 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            xSemaphoreTake(vsync_sem, portMAX_DELAY);
-            lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+            flush_screen_vsync();
         }
         if (global_is_touched)
         {
@@ -1873,6 +1946,14 @@ void set_ntp_and_demo_menu(void)
                 run_vector_dots_demo_loop();
                 vTaskDelay(pdMS_TO_TICKS(30));
             }
+            // PAINT
+            if (tx >= 312 && tx <= 712 && ty >= 250 && ty <= 350)
+            {
+                printf("[MENU NTP/DEMO] -> Wybrano PAINT\n");
+                run_paint_menu();
+                exit_menu = true;
+            }
+
             // Obsluga przycisku DONE (wyjscie na dolnym pasku)
             if (tx >= 568 && tx <= 968 && ty >= 405 && ty <= 495)
             {
@@ -1890,9 +1971,7 @@ void set_ntp_and_demo_menu(void)
                 draw_text(menu_buffer, LCD_H_RES, LCD_V_RES, "URL: http://192.168.4.1", 80, 200, 60.0f, 0x07E0);
                 draw_hollow_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 568, 405, 400, 90, 4, 0xF100);
                 draw_text(menu_buffer, LCD_H_RES, LCD_V_RES, "CANCEL", 650, 412, 80.0f, 0xF100);
-                esp_cache_msync(fbs[0], 1024 * 600 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-                xSemaphoreTake(vsync_sem, portMAX_DELAY);
-                lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
+                flush_screen_vsync();
                 xSemaphoreGive(fb_mutex);
                 wait_for_release();
                 while (is_wifi_portal_active())
@@ -1916,70 +1995,6 @@ void set_ntp_and_demo_menu(void)
     vTaskDelay(pdMS_TO_TICKS(150));
     old_seconds = 111;
 }
-
-//==**--
-// void set_ntp_and_demo_menu(void)
-// {
-//     uint16_t *menu_buffer = (uint16_t *)fbs[0];
-//     uint16_t old_tx = 9999, old_ty = 9999;
-//     bool exit_menu = false;
-//     refresh_menu_self();
-//     if (hTaskHardwareTouchDriver != NULL)
-//         vTaskResume(hTaskHardwareTouchDriver);
-//     while (!exit_menu)
-//     {
-//         uint16_t tx = global_touchX, ty = global_touchY;
-//         if (global_is_touched && tx >= 56 && tx <= 456 && ty >= 105 && ty <= 195)
-//         {
-//             vTaskDelay(pdMS_TO_TICKS(25));
-//             set_ntp_menu();
-//             vTaskDelay(pdMS_TO_TICKS(30));
-//             vTaskResume(hTaskHardwareTouchDriver);
-//             vTaskDelay(pdMS_TO_TICKS(150));
-//             refresh_menu_self();
-//             old_tx = 9999;
-//             old_ty = 9999;
-//             continue;
-//         }
-//         if (global_is_touched && tx >= 568 && tx <= 968 && ty >= 105 && ty <= 195)
-//         {
-//             vTaskDelay(pdMS_TO_TICKS(25));
-//             run_vector_dots_demo_loop();
-//             vTaskResume(hTaskHardwareTouchDriver);
-//             vTaskDelay(pdMS_TO_TICKS(150));
-//             refresh_menu_self();
-//             old_tx = 9999;
-//             old_ty = 9999;
-//             continue;
-//         }
-//         if (global_is_touched && tx >= 312 && tx <= 712 && ty >= 450 && ty <= 540)
-//         {
-//             exit_menu = true;
-//             vTaskDelay(pdMS_TO_TICKS(25));
-//             continue;
-//         }
-//         if (global_is_touched && (tx != old_tx || ty != old_ty))
-//         {
-//             old_tx = tx;
-//             old_ty = ty;
-//             xSemaphoreTake(fb_mutex, portMAX_DELAY);
-//             draw_rectangle(menu_buffer, LCD_H_RES, LCD_V_RES, 7, 7, 300, 35, 0x0000);
-//             show_debug_touch(tx, ty);
-//             xSemaphoreGive(fb_mutex);
-//             esp_cache_msync(fbs[0], 1024 * 600 * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-//             xSemaphoreTake(vsync_sem, portMAX_DELAY);
-//             lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)fbs[0]);
-//             vTaskDelay(pdMS_TO_TICKS(25));
-//         }
-//         vTaskDelay(pdMS_TO_TICKS(15));
-//     }
-//     vTaskSuspend(hTaskHardwareTouchDriver);
-//     wait_for_release();
-//     vTaskDelay(pdMS_TO_TICKS(150));
-//     old_seconds = 111;
-// }
-
-//==**--
 //=====================================================================================================
 //=====================================================================================================
 //=====================================================================================================
@@ -1991,6 +2006,204 @@ void run_vector_dots_demo_loop(void)
     start_vectordots_ball();
     vTaskDelay(pdMS_TO_TICKS(50));
 }
+//=====================================================================================================
+//=====================================================================================================
+//=====================================================================================================
+void flush_screen_vsync(void)
+{
+    esp_cache_msync(back_buffer, LCD_H_RES * LCD_V_RES * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    xSemaphoreTake(vsync_sem, 0);
+    xSemaphoreTake(vsync_sem, portMAX_DELAY);
+    lcd.lcd_draw_bitmap(0, 0, LCD_H_RES, LCD_V_RES, (uint8_t *)back_buffer);
+}
+//=====================================================================================================
+//=====================================================================================================
+//=====================================================================================================
+void draw_brush_circle(int cx, int cy, int r, uint16_t color)
+{
+    for (int dy = -r; dy <= r; dy++)
+    {
+        int py = cy + dy;
+        if (py < 70 || py >= 600)
+            continue;
+        int dx = (int)sqrtf((float)(r * r - dy * dy));
+        int x1 = cx - dx;
+        int w = (dx * 2) + 1;
+        if (x1 < 0)
+        {
+            w += x1;
+            x1 = 0;
+        }
+        if (x1 + w > 1024)
+        {
+            w = 1024 - x1;
+        }
+        if (w > 0)
+            draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, x1, py, w, 1, color);
+    }
+}
+//=====================================================================================================
+//=====================================================================================================
+//=====================================================================================================
+void draw_paint_toolbar(int sel_color_idx, int sel_size_idx)
+{
+    uint16_t colors[7] = {0xFFFF, 0xF800, 0x07E0, 0x001F, 0xFFE0, 0xF81F, 0x0000};
+    draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 0, 0, 1024, 66, 0x18E3);
+    draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 0, 66, 1024, 3, 0x8410);
+
+    for (int i = 0; i < 7; i++)
+    {
+        int bx = 8 + (i * 70);
+        draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, bx, 6, 64, 54, colors[i]);
+        uint16_t border = (i == sel_color_idx) ? 0xFFFF : 0x4208;
+        int thick = (i == sel_color_idx) ? 4 : 2;
+        draw_hollow_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, bx, 6, 64, 54, thick, border);
+    }
+
+    int radii[3] = {3, 7, 15};
+    for (int s = 0; s < 3; s++)
+    {
+        int sx = 515 + (s * 74);
+        uint16_t s_border = (s == sel_size_idx) ? 0x07FF : 0x4208;
+        int s_thick = (s == sel_size_idx) ? 4 : 2;
+        draw_hollow_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, sx, 6, 68, 54, s_thick, s_border);
+
+        int r = radii[s];
+        for (int dy = -r; dy <= r; dy++)
+        {
+            int dx = (int)sqrtf((float)(r * r - dy * dy));
+            draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, sx + 34 - dx, 33 + dy, (dx * 2) + 1, 1, 0xFFFF);
+        }
+    }
+
+    draw_hollow_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 750, 6, 126, 54, 3, 0xFD20);
+    draw_text(back_buffer, LCD_H_RES, LCD_V_RES, "CLR", 778, 12, 42.0f, 0xFD20);
+
+    draw_hollow_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 888, 6, 126, 54, 3, 0xF800);
+    draw_text(back_buffer, LCD_H_RES, LCD_V_RES, "EXIT", 908, 12, 42.0f, 0xF800);
+}
+//=====================================================================================================
+//=====================================================================================================
+//=====================================================================================================
+void run_paint_menu(void)
+{
+    uint16_t colors[7] = {0xFFFF, 0xF800, 0x07E0, 0x001F, 0xFFE0, 0xF81F, 0x0000};
+    int radii[3] = {3, 7, 15};
+    int sel_color = 3;
+    int sel_size = 1;
+
+    draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 0, 0, 1024, 600, 0x0000);
+    draw_paint_toolbar(sel_color, sel_size);
+    flush_screen_vsync();
+
+    vTaskDelay(pdMS_TO_TICKS(250));
+
+    bool exit_paint = false;
+    bool is_drawing = false;
+    int prev_x = -1;
+    int prev_y = -1;
+    uint16_t tx = 0, ty = 0;
+
+    while (!exit_paint)
+    {
+        if (touch.getTouch(&tx, &ty))
+        {
+            int px = (int)tx;
+            int py = (int)ty;
+
+            if (py < 68)
+            {
+                is_drawing = false;
+                bool toolbar_changed = false;
+
+                for (int i = 0; i < 7; i++)
+                {
+                    int bx = 8 + (i * 70);
+                    if (px >= bx && px <= bx + 64)
+                    {
+                        sel_color = i;
+                        toolbar_changed = true;
+                    }
+                }
+                for (int s = 0; s < 3; s++)
+                {
+                    int sx = 515 + (s * 74);
+                    if (px >= sx && px <= sx + 68)
+                    {
+                        sel_size = s;
+                        toolbar_changed = true;
+                    }
+                }
+                if (px >= 750 && px <= 876)
+                {
+                    draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 0, 69, 1024, 531, 0x0000);
+                    toolbar_changed = true;
+                }
+                if (px >= 888 && px <= 1014)
+                {
+                    exit_paint = true;
+                }
+
+                if (toolbar_changed && !exit_paint)
+                {
+                    draw_paint_toolbar(sel_color, sel_size);
+                    flush_screen_vsync();
+                    vTaskDelay(pdMS_TO_TICKS(150));
+                }
+            }
+            else
+            {
+                int r = radii[sel_size];
+                uint16_t col = colors[sel_color];
+
+                if (!is_drawing || prev_x < 0)
+                {
+                    draw_brush_circle(px, py, r, col);
+                }
+                else
+                {
+                    int dx = px - prev_x;
+                    int dy = py - prev_y;
+                    int steps = (abs(dx) > abs(dy)) ? abs(dx) : abs(dy);
+                    if (steps == 0)
+                        steps = 1;
+                    for (int st = 0; st <= steps; st++)
+                    {
+                        int ix = prev_x + (dx * st) / steps;
+                        int iy = prev_y + (dy * st) / steps;
+                        draw_brush_circle(ix, iy, r, col);
+                    }
+                }
+                prev_x = px;
+                prev_y = py;
+                is_drawing = true;
+                flush_screen_vsync();
+            }
+        }
+        else
+        {
+            is_drawing = false;
+            prev_x = -1;
+            prev_y = -1;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    old_seconds = 111;
+}
+
+//=====================================================================================================
+//=====================================================================================================
+//=====================================================================================================
+
+//=====================================================================================================
+//=====================================================================================================
+//=====================================================================================================
+
+//=====================================================================================================
+//=====================================================================================================
+//=====================================================================================================
+
 //=====================================================================================================
 //=====================================================================================================
 //=====================================================================================================

@@ -48,3 +48,7 @@ void set_ntp_and_demo_menu(void);
 void run_vector_dots_demo_loop(void);
 void refresh_menu_self(void);
 void tst_lcd(void);
+void draw_paint_toolbar(int sel_color_idx, int sel_size_idx);
+void draw_brush_circle(int cx, int cy, int r, uint16_t color);
+void run_paint_menu(void);
+void flush_screen_vsync(void);
