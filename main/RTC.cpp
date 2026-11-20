@@ -98,7 +98,18 @@ static const int SLIDE_INTERVALS_COUNT = 6;
 //=====================================================================================================
 //=====================================================================================================
 //=====================================================================================================
+static void draw_ntp_loc_and_tz_buttons(void)
+{
+    draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 12, 81, 288, 108, 0x0000);
+    draw_hollow_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 16, 85, 280, 100, 4, 0xFFE0);
+    draw_text(back_buffer, LCD_H_RES, LCD_V_RES, LOCATIONS[g_weather_loc_idx].name, 65, 112, 42.0f, 0xFFE0);
 
+    char tz_buf[24];
+    snprintf(tz_buf, sizeof(tz_buf), "TZ: %s", LOCATIONS[g_tz_loc_idx].name);
+    draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 724, 81, 288, 108, 0x0000);
+    draw_hollow_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 728, 85, 280, 100, 4, 0x07E0);
+    draw_text(back_buffer, LCD_H_RES, LCD_V_RES, tz_buf, 748, 112, 38.0f, 0x07E0);
+}
 //=====================================================================================================
 //=====================================================================================================
 //=====================================================================================================
@@ -1844,7 +1855,7 @@ void set_ntp_menu(void)
     // 0. PRZYCISK "GET TEMP" (NA SAMEJ GÓRZE: X=312, Y=85, W=400, H=100)
     draw_hollow_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 312, 85, 400, 100, 4, 0x06E0);
     draw_text(back_buffer, LCD_H_RES, LCD_V_RES, "GET TEMP", 358, 92, 80, 0x06E0);
-
+    draw_ntp_loc_and_tz_buttons();
     // =================================================================================
     // 1. PRZYCISK "START NTP" (WYŻEJ NA OSI Y)
     // =================================================================================
@@ -1872,13 +1883,32 @@ void set_ntp_menu(void)
         {
             uint16_t tx = global_touchX;
             uint16_t ty = global_touchY;
+            // SET TZ
+            if (tx >= 16 && tx <= 296 && ty >= 85 && ty <= 185)
+            {
+                g_weather_loc_idx = (g_weather_loc_idx + 1) % 3;
+                draw_ntp_loc_and_tz_buttons();
+                flush_screen_vsync();
+                memcpy(back_buffer, (void *)fbs[active_fb_idx], LCD_H_RES * LCD_V_RES * 2);
+                wait_for_release();
+            }
+            // SET LOCATION
+            if (tx >= 728 && tx <= 1008 && ty >= 85 && ty <= 185)
+            {
+                g_tz_loc_idx = (g_tz_loc_idx + 1) % 3;
+                apply_timezone_by_idx(g_tz_loc_idx);
+                draw_ntp_loc_and_tz_buttons();
+                flush_screen_vsync();
+                memcpy(back_buffer, (void *)fbs[active_fb_idx], LCD_H_RES * LCD_V_RES * 2);
+                wait_for_release();
+            }
 
             // --- DEBUGER DOTYKU NA EKRANIE ---
             // Czyścimy mały pasek pod cyframi w lewym rogu i rysujemy koordynaty
             // draw_rectangle(back_buffer, LCD_H_RES, LCD_V_RES, 7, 7, 300, 35, 0x0000);
             // show_debug_touch(tx, ty);
 
-            // 1. HIT-BOX dla przycisku START NTP (Ramka Y=300, wysokość 120 -> ty od ok. 300 do 450)
+            // 1. START NTP  ---  HIT-BOX dla przycisku START NTP (Ramka Y=300, wysokość 120 -> ty od ok. 300 do 450)
             if (tx >= 312 && tx <= 712 && ty >= 225 && ty <= 325)
             {
                 if (!is_ntp_sync_running())
@@ -1936,7 +1966,7 @@ void set_ntp_menu(void)
                 }
             }
 
-            // 0. HIT-BOX dla przycisku GET TEMP (X=312..712, Y=85..185)
+            // 0. GET TEMP  ---  HIT-BOX dla przycisku GET TEMP (X=312..712, Y=85..185)
             if (tx >= 312 && tx <= 712 && ty >= 85 && ty <= 185)
             {
                 // GET_TEMP Obsługa kliknięcia przycisku GET TEMP, wywołanie funkcji pobierania temperatury oraz aktualizacja bufora ramki i ekranu LCD.
@@ -1982,10 +2012,11 @@ void set_ntp_menu(void)
                 }
             }
 
-            // 2. HIT-BOX dla przycisku DONE (Ramka Y=600, wysokość 120 -> ty od ok. 600 do 750)
+            // 2. DONE  ---  HIT-BOX dla przycisku DONE (Ramka Y=600, wysokość 120 -> ty od ok. 600 do 750)
             if (tx >= 312 && tx <= 712 && ty >= 450 && ty <= 540)
             {
                 printf("[MENU NTP] -> Kliknięto DONE. Powrót do zegara.\n");
+                save_location_prefs_to_NVS(g_weather_loc_idx, g_tz_loc_idx);
                 wait_for_release(); // Czekamy na puszczenie ekranu przed wyjściem z menu, aby uniknąć natychmiastowego wyzwolenia przycisku
                 vTaskDelay(pdMS_TO_TICKS(150));
                 exit_menu = true;
