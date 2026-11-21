@@ -1,8 +1,9 @@
 # ESP32-P4 MIPI-DSI – Guition JC1060P470C_I_W_Y (7.0" 1024×600)
  
 # ---
-![Screenshot](/PICTURES/1.jpg) 
-![Screenshot](/PICTURES/0.jpg) 
+![Screenshot](/PICTURES/00.jpg) 
+![Screenshot](/PICTURES/01.jpg) 
+![Screenshot](/PICTURES/03.jpg) 
 ---
 🇬🇧 [English](#-english) | 🇵🇱 [Polski](#-polski)
 ---
@@ -93,4 +94,17 @@ Projekt bazowy w czystym **ESP-IDF** dla płytki rozwojowej **Guition JC1060P470
 * **Testowa aplikacja PAINT:** Dodano wbudowaną testową aplikację do rysowania **PAINT**, demonstrującą responsywność ekranu dotykowego oraz płynność renderowania obrazu.
 
 ---
-
+![Screenshot](/PICTURES/00.jpg) 
+![Screenshot](/PICTURES/01.jpg) 
+![Screenshot](/PICTURES/02.jpg) 
+![Screenshot](/PICTURES/03.jpg) 
+![Screenshot](/PICTURES/04.jpg) 
+![Screenshot](/PICTURES/05.jpg) 
+![Screenshot](/PICTURES/06.jpg) 
+![Screenshot](/PICTURES/07.jpg) 
+![Screenshot](/PICTURES/08.jpg) 
+![Screenshot](/PICTURES/09.jpg) 
+![Screenshot](/PICTURES/10.jpg) 
+![Screenshot](/PICTURES/11.jpg) 
+![Screenshot](/PICTURES/12.jpg) 
+# ---
