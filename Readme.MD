@@ -107,4 +107,5 @@ Projekt bazowy w czystym **ESP-IDF** dla płytki rozwojowej **Guition JC1060P470
 ![Screenshot](/PICTURES/10.jpg) 
 ![Screenshot](/PICTURES/11.jpg) 
 ![Screenshot](/PICTURES/12.jpg) 
+![Screenshot](/PICTURES/00.jpg) 
 # ---
