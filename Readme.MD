@@ -12,8 +12,13 @@
 Bare-metal **ESP-IDF** starter project for the **Guition JC1060P470C_I_W_Y** development board featuring a 7.0" (1024×600) MIPI-DSI display and a GT911 capacitive touch controller.
 
 > ⚠️ **WARNING – ESP32-P4 Silicon Revision (v1.3 / ECO2):**
-> This board uses the **ESP32-P4 rev. v1.3 (ECO2)** chip. Be very careful when modifying `sdkconfig` / `sdkconfig.defaults` – do not overwrite the silicon revision settings, 32 MB PSRAM configuration, or compiler optimisation flags (`-Og`).
+> This board uses the **ESP32-P4 rev. v1.3 (ECO2)** chip. Be very careful when modifying `sdkconfig` / `sdkconfig.defaults` – do not overwrite the silicon revision settings, 32 MB PSRAM configuration...
 
+#### ⚙️ Build Optimization Recommendations
+
+* **Compiler Optimization (`-O2`):** This project is configured and built with full performance optimization (**`-O2`**, `CONFIG_COMPILER_OPTIMIZATION_PERF=y` in `sdkconfig.defaults`). Any earlier flickering or visual artifacts under `-O2` have been completely eliminated thanks to full hardware-synchronized **double buffering** (`flush_screen_vsync`).
+* **ESP-IDF Version (`v5.5.3`):** This firmware was developed, compiled, and verified exclusively using **ESP-IDF v5.5.3**. Due to rapid changes in MIPI-DSI, PSRAM, and `esp_hosted` drivers across framework releases, there is no guarantee that compiling with any other ESP-IDF version will succeed without modifications.
+ 
 ### 📊 Project Status (Milestones)
 
 - [x] **Milestone 1:** MIPI-DSI bus wake-up, LDO3 power, PWM backlight, and **JD9165** driver initialisation (clean ~60 Hz output with zero DMA errors).
@@ -55,7 +60,12 @@ Bare-metal **ESP-IDF** starter project for the **Guition JC1060P470C_I_W_Y** dev
 Projekt bazowy w czystym **ESP-IDF** dla płytki rozwojowej **Guition JC1060P470C_I_W_Y** z wyświetlaczem 7.0" (1024×600) oraz panelem dotykowym GT911.
 
 > ⚠️ **UWAGA – Rewizja krzemu ESP32-P4 (v1.3 / ECO2):**
-> Płytka wyposażona jest w układ **ESP32-P4 w rewizji v1.3 (ECO2)**. Należy zachować szczególną ostrożność przy modyfikacji pliku `sdkconfig` / `sdkconfig.defaults` – nie nadpisywać ustawień rewizji układu, konfiguracji 32 MB PSRAM oraz flag optymalizacji kompilatora (`-Og`).
+> Płytka wyposażona jest w układ **ESP32-P4 w rewizji v1.3 (ECO2)**. Należy zachować szczególną ostrożność przy modyfikacji pliku `sdkconfig` / `sdkconfig.defaults` – nie nadpisywać ustawień rewizji układu...
+
+#### ⚙️ Zalecenia dotyczące optymalizacji kompilacji
+* **Optymalizacja kompilatora (`-O2`):** Projekt jest skonfigurowany i budowany z pełną optymalizacją wydajności (**`-O2`**, `CONFIG_COMPILER_OPTIMIZATION_PERF=y` w `sdkconfig.defaults`). Wcześniejszy flickering oraz artefakty obrazu występujące przy `-O2` zostały całkowicie wyeliminowane dzięki pełnemu **podwójnemu buforowaniu (double buffering)** zsynchronizowanemu z VSYNC.
+* **Wersja ESP-IDF (`v5.5.3`):** Ten program został napisany, skompilowany i przetestowany wyłącznie w wersji **ESP-IDF v5.5.3**. Ze względu na częste zmiany w sterownikach MIPI-DSI, PSRAM oraz `esp_hosted` między wydaniami frameworka, nie ma żadnej gwarancji, że użycie jakiejkolwiek innej wersji ESP-IDF pozwoli na poprawne zbudowanie projektu.
+
 
 ### 📊 Status projektu (Kamienie milowe)
 
