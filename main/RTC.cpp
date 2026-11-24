@@ -517,6 +517,7 @@ void init_RTC_subsystem(void)
             vTaskDelay(pdMS_TO_TICKS(aborted ? 5 : 40));
         }
     }
+    wait_for_release();
     xSemaphoreTake(fb_mutex, portMAX_DELAY);
     safe_clear_screen(back_buffer, 0x0000);
     flush_screen_vsync();
@@ -767,23 +768,31 @@ void wait_for_release(void)
 {
     // Sprawdzamy stan wątku sprzętowego w tle
     eTaskState state = eTaskGetState(hTaskHardwareTouchDriver);
+    int no_touch_streak = 0;
 
     // Jeśli wątek sprzętowy NIE jest zawieszony (czyli działa i sam odpytuje I2C)
     if (state != eSuspended && state != eDeleted)
     {
         // Poziom 2: Bezpiecznie czekamy na flagę w pamięci RAM
-        while (global_is_touched == true)
+        for (int i = 0; i < 3; i++)
         {
-            vTaskDelay(pdMS_TO_TICKS(15));
+            while (global_is_touched == true)
+            {
+                vTaskDelay(pdMS_TO_TICKS(15));
+            }
+            if (global_is_touched == true)
+            {
+                i = 0;
+            }
         }
     }
     else
     {
-        // Poziom 1: Driver w tle śpi, więc główny wątek może bezpiecznie odpytać I2C
         uint16_t dummyX = 0, dummyY = 0;
-        while (touch.getTouch(&dummyX, &dummyY) == true)
+        while (no_touch_streak < 3)
         {
             vTaskDelay(pdMS_TO_TICKS(15));
+            no_touch_streak = (touch.getTouch(&dummyX, &dummyY) == true) ? 0 : (no_touch_streak + 1);
         }
     }
 }
