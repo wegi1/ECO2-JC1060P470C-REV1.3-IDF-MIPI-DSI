@@ -5,9 +5,20 @@
 ![Screenshot](/PICTURES/01.jpg) 
 ![Screenshot](/PICTURES/03.jpg) 
 ---
+
+> ### ⚡ 1-Click Web Flasher / Szybkie wgrywanie przez przeglądarkę
+> 👉 **[Launch Web Flasher (Chrome / Edge)](https://wegi1.github.io/ECO2-JC1060P470C-REV1.3-IDF-MIPI-DSI/)** — Flash your **ESP32-P4** board directly via USB without compiling!  
+> 👉 **[Otwórz Web Flasher (Chrome / Edge)](https://wegi1.github.io/ECO2-JC1060P470C-REV1.3-IDF-MIPI-DSI/)** — Wgraj gotowy firmware na płytkę **ESP32-P4** bezpośrednio przez USB bez kompilacji!
+
+
+---
 🇬🇧 [English](#-english) | 🇵🇱 [Polski](#-polski)
 ---
 ## 🇬🇧 English
+
+> **⚠️ Note – LCD Panel V2 Revision (`panel-v2`)**
+> This branch is dedicated to the newer hardware revision of the 7" display (`JC1060P470C_I_W_Y`, 1024×600). It retains the same **JD9165** driver IC, but uses an updated initialization sequence (58 commands extracted from stock Brookesia v2.0.2 firmware) and adjusted DPI timings (`51 MHz`, HSYNC: `24/136/160`, VSYNC: `2/21/12`).
+> *For the older panel revision (V1), please use the `master` / `main` branch.*
 
 Bare-metal **ESP-IDF** starter project for the **Guition JC1060P470C_I_W_Y** development board featuring a 7.0" (1024×600) MIPI-DSI display and a GT911 capacitive touch controller.
 
@@ -56,6 +67,12 @@ Bare-metal **ESP-IDF** starter project for the **Guition JC1060P470C_I_W_Y** dev
 
 ---
 ## 🇵🇱 Polski
+
+> **⚠️ Uwaga – Wersja dla panelu LCD V2 (`panel-v2`)**
+> Ten branch jest przeznaczony dla nowszej rewizji wyświetlacza 7" (`JC1060P470C_I_W_Y`, 1024×600). Zachowano ten sam układ sterownika **JD9165**, ale zastosowano zaktualizowaną sekwencję inicjalizacyjną (58 komend z firmware fabrycznego Brookesia v2.0.2) oraz zmienione timingi magistrali DPI (`51 MHz`, HSYNC: `24/136/160`, VSYNC: `2/21/12`).
+> *Dla starszej rewizji matrycy (V1) użyj brancha `master` / `main`.*
+
+---
 
 Projekt bazowy w czystym **ESP-IDF** dla płytki rozwojowej **Guition JC1060P470C_I_W_Y** z wyświetlaczem 7.0" (1024×600) oraz panelem dotykowym GT911.
 
