@@ -9,6 +9,8 @@
 ---
 ## 🇬🇧 English
 
+ℹ️ ESP32-C6 Firmware Upgrade: This branch includes automatic firmware upgrade for the ESP32-C6 co-processor from SPIFFS (/spiffs/c6_fw.bin) over SDIO, dedicated to the V1 display panel revision.
+
 Bare-metal **ESP-IDF** starter project for the **Guition JC1060P470C_I_W_Y** development board featuring a 7.0" (1024×600) MIPI-DSI display and a GT911 capacitive touch controller.
 
 > ⚠️ **WARNING – ESP32-P4 Silicon Revision (v1.3 / ECO2):**
@@ -56,6 +58,8 @@ Bare-metal **ESP-IDF** starter project for the **Guition JC1060P470C_I_W_Y** dev
 
 ---
 ## 🇵🇱 Polski
+
+ℹ️ Aktualizacja ESP32-C6: Ta wersja zawiera automatyczną aktualizację firmware'u koprocesora ESP32-C6 ze SPIFFS (/spiffs/c6_fw.bin) po interfejsie SDIO dla panelu w rewizji V1.
 
 Projekt bazowy w czystym **ESP-IDF** dla płytki rozwojowej **Guition JC1060P470C_I_W_Y** z wyświetlaczem 7.0" (1024×600) oraz panelem dotykowym GT911.
 
