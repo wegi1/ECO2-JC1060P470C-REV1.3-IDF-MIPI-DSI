@@ -9,6 +9,8 @@
 ---
 ## 🇬🇧 English
 
+ℹ️ ESP32-C6 Firmware Upgrade: This branch includes automatic firmware upgrade for the ESP32-C6 co-processor from SPIFFS (/spiffs/c6_fw.bin) over SDIO, dedicated to the V2 display panel revision.
+
 > **⚠️ Note – LCD Panel V2 Revision (`panel-v2`)**
 > This branch is dedicated to the newer hardware revision of the 7" display (`JC1060P470C_I_W_Y`, 1024×600). It retains the same **JD9165** driver IC, but uses an updated initialization sequence (58 commands extracted from stock Brookesia v2.0.2 firmware) and adjusted DPI timings (`51 MHz`, HSYNC: `24/136/160`, VSYNC: `2/21/12`).
 > *For the older panel revision (V1), please use the `master` / `main` branch.*
@@ -60,6 +62,8 @@ Bare-metal **ESP-IDF** starter project for the **Guition JC1060P470C_I_W_Y** dev
 
 ---
 ## 🇵🇱 Polski
+
+ℹ️ Aktualizacja ESP32-C6: Ta wersja zawiera automatyczną aktualizację firmware'u koprocesora ESP32-C6 ze SPIFFS (/spiffs/c6_fw.bin) po interfejsie SDIO dla panelu w rewizji V2.
 
 > **⚠️ Uwaga – Wersja dla panelu LCD V2 (`panel-v2`)**
 > Ten branch jest przeznaczony dla nowszej rewizji wyświetlacza 7" (`JC1060P470C_I_W_Y`, 1024×600). Zachowano ten sam układ sterownika **JD9165**, ale zastosowano zaktualizowaną sekwencję inicjalizacyjną (58 komend z firmware fabrycznego Brookesia v2.0.2) oraz zmienione timingi magistrali DPI (`51 MHz`, HSYNC: `24/136/160`, VSYNC: `2/21/12`).

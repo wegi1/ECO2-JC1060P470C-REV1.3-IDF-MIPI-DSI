@@ -77,3 +77,5 @@ Desktop.ini
 *.suo       # Visual Studio Solution User Options
 *.sln.docstates # Visual Studio
 build/
+# Wyjątek dla firmware koprocesora ESP32-C6 w partycji SPIFFS (FOTOS)
+!FOTOS/c6_fw.bin
