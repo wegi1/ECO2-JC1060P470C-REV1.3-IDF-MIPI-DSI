@@ -3,6 +3,7 @@
 #include <string.h>
 #include "pins_config.h" // Zawiera definicje LCD_H_RES i LCD_V_RES
 #include "esp_heap_caps.h"
+#include "esp_cache.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
@@ -67,6 +68,7 @@ void safe_clear_screen(uint16_t *buffer, uint16_t color)
     {
         buffer[i] = raw_rgb_color;
     }
+    esp_cache_msync((void *)buffer, total_pixels * sizeof(uint16_t), ESP_CACHE_MSYNC_FLAG_DIR_C2M);
 }
 //============================================================================================================
 //============================================================================================================

@@ -105,17 +105,17 @@ extern "C"
     {                                                    \
         .virtual_channel = 0,                            \
         .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,     \
-        .dpi_clock_freq_mhz = 52,                        \
+        .dpi_clock_freq_mhz = 51,                        \
         .pixel_format = px_format,                       \
         .num_fbs = 2,                                    \
         .video_timing = {                                \
             .h_size = 1024,                              \
             .v_size = 600,                               \
-            .hsync_pulse_width = 20,                     \
-            .hsync_back_porch = 160,                     \
+            .hsync_pulse_width = 24,                     \
+            .hsync_back_porch = 136,                     \
             .hsync_front_porch = 160,                    \
-            .vsync_pulse_width = 10,                     \
-            .vsync_back_porch = 23,                      \
+            .vsync_pulse_width = 2,                      \
+            .vsync_back_porch = 21,                      \
             .vsync_front_porch = 12,                     \
         },                                               \
         .flags = {                                       \

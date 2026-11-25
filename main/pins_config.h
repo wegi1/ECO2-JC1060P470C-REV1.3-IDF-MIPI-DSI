@@ -5,7 +5,7 @@
 #define LCD_H_RES 1024
 #define LCD_V_RES 600
 
-#define LCD_RST 0
+#define LCD_RST 5
 #define LCD_LED 23
 
 // 1. Definicja pinów dla dotyku
