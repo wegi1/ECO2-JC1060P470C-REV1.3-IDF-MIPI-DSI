@@ -1,0 +1,16 @@
+{
+  "name": "ESP32-P4 Vector Clock (7-inch ECO2 - Panel V2)",
+  "version": "1.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-P4",
+      "parts": [
+        {
+          "path": "ECO2-JC1060P470C-V2-FULL-MERGED.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

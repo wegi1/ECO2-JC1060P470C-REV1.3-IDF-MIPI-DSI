@@ -5,6 +5,11 @@
 ![Screenshot](/PICTURES/01.jpg) 
 ![Screenshot](/PICTURES/03.jpg) 
 ---
+
+> ### ⚡ 1-Click Web Flasher / Szybkie wgrywanie przez przeglądarkę
+> 👉 **[Launch Web Flasher (Chrome / Edge)](https://wegi1.github.io/ECO2-JC1060P470C-REV1.3-IDF-MIPI-DSI/)** — Flash your **ESP32-P4** board directly via USB without compiling!  
+> 👉 **[Otwórz Web Flasher (Chrome / Edge)](https://wegi1.github.io/ECO2-JC1060P470C-REV1.3-IDF-MIPI-DSI/)** — Wgraj gotowy firmware na płytkę **ESP32-P4** bezpośrednio przez USB bez kompilacji!
+
 🇬🇧 [English](#-english) | 🇵🇱 [Polski](#-polski)
 ---
 ## 🇬🇧 English
